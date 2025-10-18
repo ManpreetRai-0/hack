@@ -1,19 +1,31 @@
 import * as React from 'react';
 import {
   Box, Button, Typography, TextField, Paper,
-  MenuItem, Select, InputLabel, FormControl
+  MenuItem, Select, InputLabel, FormControl,
+  Dialog, DialogTitle, DialogContent, DialogActions
 } from '@mui/material';
 import dayjs from 'dayjs';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
 import { auth, db } from '../../firebase';
-import { collection, addDoc } from 'firebase/firestore';
+import {
+  collection, addDoc, query, where,
+  getDocs, doc, updateDoc, setDoc
+} from 'firebase/firestore';
 
 export default function Dashboard() {
   const [selectedDate, setSelectedDate] = React.useState(dayjs());
   const [events, setEvents] = React.useState({});
   const [takenEvents, setTakenEvents] = React.useState({});
-  const [viewLinked, setViewLinked] = React.useState(false); // ✅ toggle for linked user view
+  const [viewLinked, setViewLinked] = React.useState(false);
+
+  // Invite popup state
+  const [inviteOpen, setInviteOpen] = React.useState(false);
+  const [inviteEmail, setInviteEmail] = React.useState("");
+
+  // Invitations
+  const [pendingInvites, setPendingInvites] = React.useState([]);
+
   const [prescription, setPrescription] = React.useState({
     name: '',
     dosage: '',
@@ -29,6 +41,7 @@ export default function Dashboard() {
     if (Notification.permission !== 'granted') {
       Notification.requestPermission();
     }
+    checkInvites();
   }, []);
 
   const getNextWeekDays = (date) => {
@@ -57,7 +70,7 @@ export default function Dashboard() {
         ...prescriptionData,
         startDate: prescriptionData.startDate.toDate(),
         endDate: prescriptionData.endDate ? prescriptionData.endDate.toDate() : null,
-        
+        eventsByDate
       });
 
       console.log('✅ Prescription saved successfully.');
@@ -67,51 +80,110 @@ export default function Dashboard() {
   };
 
   const handleAddPrescription = () => {
-  const { name, dosage, frequency, startDate, endDate, timesPerDay } = prescription;
-  if (!name || !dosage || timesPerDay.length === 0) return;
+    const { name, dosage, frequency, startDate, endDate, timesPerDay } = prescription;
+    if (!name || !dosage || timesPerDay.length === 0) return;
 
-  const updatedEvents = { ...events };
+    const updatedEvents = { ...events };
 
-  // ✅ step size based on frequency
-  let step = 1;
-  if (frequency === "every-2-days") step = 2;
-  if (frequency === "weekly") step = 7;
+    // step size based on frequency
+    let step = 1;
+    if (frequency === "every-2-days") step = 2;
+    if (frequency === "weekly") step = 7;
 
-  for (let i = 0; i < 7; i += step) {
-    const date = startDate.add(i, "day");
-    if (endDate && date.isAfter(endDate, "day")) continue;
+    for (let i = 0; i < 7; i += step) {
+      const date = startDate.add(i, "day");
+      if (endDate && date.isAfter(endDate, "day")) continue;
 
-    const dateKey = date.format("YYYY-MM-DD");
+      const dateKey = date.format("YYYY-MM-DD");
 
-    timesPerDay.forEach((time) => {
-      const eventDescription = `${name} - ${dosage} at ${time}`;
-      if (!updatedEvents[dateKey]) updatedEvents[dateKey] = [];
-      updatedEvents[dateKey].push(eventDescription);
+      timesPerDay.forEach((time) => {
+        const eventDescription = `${name} - ${dosage} at ${time}`;
+        if (!updatedEvents[dateKey]) updatedEvents[dateKey] = [];
+        updatedEvents[dateKey].push(eventDescription);
 
-      if (Notification.permission === "granted") {
-        const dateTime = dayjs(`${dateKey}T${time}`);
-        if (dateTime.isAfter(dayjs())) {
-          scheduleNotification("Pill Reminder", eventDescription, dateTime);
+        if (Notification.permission === "granted") {
+          const dateTime = dayjs(`${dateKey}T${time}`);
+          if (dateTime.isAfter(dayjs())) {
+            scheduleNotification("Pill Reminder", eventDescription, dateTime);
+          }
         }
-      }
+      });
+    }
+
+    setEvents(updatedEvents);
+    savePrescriptionToFirebase(prescription, updatedEvents);
+
+    setPrescription({
+      name: "",
+      dosage: "",
+      frequency: "daily",
+      startDate: dayjs(),
+      endDate: null,
+      timesPerDay: ["08:00"],
     });
-  }
+  };
 
-  setEvents(updatedEvents);
-  savePrescriptionToFirebase(prescription, updatedEvents);
+  // ========== INVITATION SYSTEM ==========
 
-  setPrescription({
-    name: "",
-    dosage: "",
-    frequency: "daily",
-    startDate: dayjs(),
-    endDate: null,
-    timesPerDay: ["08:00"],
-  });
+  // Send invite
+  const sendInvite = async () => {
+    const user = auth.currentUser;
+    if (!user) return;
 
+    try {
+      await addDoc(collection(db, "invitations"), {
+        from: user.email,
+        to: inviteEmail,
+        status: "pending",
+        createdAt: new Date(),
+      });
+      alert("✅ Invite sent!");
+      setInviteOpen(false);
+      setInviteEmail("");
+    } catch (err) {
+      console.error("Error sending invite:", err);
+    }
+  };
 
-};
+  // Check invites for current user
+  const checkInvites = async () => {
+    const user = auth.currentUser;
+    if (!user) return;
 
+    const q = query(
+      collection(db, "invitations"),
+      where("to", "==", user.email),
+      where("status", "==", "pending")
+    );
+
+    const snapshot = await getDocs(q);
+    const invites = [];
+    snapshot.forEach((docSnap) => {
+      invites.push({ id: docSnap.id, ...docSnap.data() });
+    });
+    setPendingInvites(invites);
+  };
+
+  // Accept invite
+  const acceptInvite = async (inviteId, fromEmail) => {
+    const user = auth.currentUser;
+    if (!user) return;
+
+    const sanitizedFrom = fromEmail.replace(/\./g, "_");
+    const sanitizedTo = user.email.replace(/\./g, "_");
+
+    // Update invite
+    await updateDoc(doc(db, "invitations", inviteId), {
+      status: "accepted"
+    });
+
+    // Link users
+    await setDoc(doc(db, "users", sanitizedFrom), { linkedUsers: [user.email] }, { merge: true });
+    await setDoc(doc(db, "users", sanitizedTo), { viewing: fromEmail }, { merge: true });
+
+    alert("✅ Invite accepted!");
+    checkInvites();
+  };
 
   const daysOfWeek = getNextWeekDays(selectedDate);
 
@@ -119,20 +191,61 @@ export default function Dashboard() {
     <LocalizationProvider dateAdapter={AdapterDayjs}>
       <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', p: 3, width: '100%' }}>
         
-        {/* Header with Linked User Toggle */}
+        {/* Header with Linked User Toggle and Invite */}
         <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%', mb: 2 }}>
           <Typography variant="h6">
             {viewLinked ? "Linked User's Dashboard" : "My Prescription Dashboard"}
           </Typography>
-          <Button
-            variant="outlined"
-            onClick={() => setViewLinked((prev) => !prev)}
-          >
-            {viewLinked ? "View My Dashboard" : "View Linked User"}
-          </Button>
+          <Box>
+            <Button variant="outlined" onClick={() => setInviteOpen(true)} sx={{ mr: 2 }}>
+              Invite User
+            </Button>
+            <Button
+              variant="outlined"
+              onClick={() => setViewLinked((prev) => !prev)}
+            >
+              {viewLinked ? "View My Dashboard" : "View Linked User"}
+            </Button>
+          </Box>
         </Box>
 
-        {/* Prescription Form (only show if viewing own dashboard) */}
+        {/* Accept pending invites */}
+        {pendingInvites.length > 0 && (
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="subtitle1">Pending Invites:</Typography>
+            {pendingInvites.map((invite) => (
+              <Box key={invite.id} sx={{ display: "flex", alignItems: "center", mb: 1 }}>
+                <Typography sx={{ mr: 2 }}>{invite.from} invited you</Typography>
+                <Button
+                  variant="contained"
+                  size="small"
+                  onClick={() => acceptInvite(invite.id, invite.from)}
+                >
+                  Accept
+                </Button>
+              </Box>
+            ))}
+          </Box>
+        )}
+
+        {/* Invite Dialog */}
+        <Dialog open={inviteOpen} onClose={() => setInviteOpen(false)}>
+          <DialogTitle>Invite Linked User</DialogTitle>
+          <DialogContent>
+            <TextField
+              fullWidth
+              label="User Email"
+              value={inviteEmail}
+              onChange={(e) => setInviteEmail(e.target.value)}
+            />
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setInviteOpen(false)}>Cancel</Button>
+            <Button onClick={sendInvite} variant="contained">Send Invite</Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* Prescription Form (only for own dashboard) */}
         {!viewLinked && (
           <Box sx={{ width: '100%', mb: 2 }}>
             <TextField fullWidth label="Prescription Name" value={prescription.name}
