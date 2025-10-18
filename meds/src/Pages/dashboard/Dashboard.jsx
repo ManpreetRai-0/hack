@@ -12,7 +12,8 @@ import { collection, addDoc } from 'firebase/firestore';
 export default function Dashboard() {
   const [selectedDate, setSelectedDate] = React.useState(dayjs());
   const [events, setEvents] = React.useState({});
-  const [takenEvents, setTakenEvents] = React.useState({}); // ✅ Track taken meds
+  const [takenEvents, setTakenEvents] = React.useState({});
+  const [viewLinked, setViewLinked] = React.useState(false); // ✅ toggle for linked user view
   const [prescription, setPrescription] = React.useState({
     name: '',
     dosage: '',
@@ -56,8 +57,7 @@ export default function Dashboard() {
         ...prescriptionData,
         startDate: prescriptionData.startDate.toDate(),
         endDate: prescriptionData.endDate ? prescriptionData.endDate.toDate() : null,
-        createdAt: new Date(),
-        //eventsByDate,
+        
       });
 
       console.log('✅ Prescription saved successfully.');
@@ -67,133 +67,153 @@ export default function Dashboard() {
   };
 
   const handleAddPrescription = () => {
-    const { name, dosage, frequency, startDate, endDate, timesPerDay } = prescription;
-    if (!name || !dosage || timesPerDay.length === 0) return;
+  const { name, dosage, frequency, startDate, endDate, timesPerDay } = prescription;
+  if (!name || !dosage || timesPerDay.length === 0) return;
 
-    const updatedEvents = { ...events };
+  const updatedEvents = { ...events };
 
-    for (let i = 0; i < 7; i++) {
-      const date = startDate.add(i, 'day');
-      if (endDate && date.isAfter(endDate, 'day')) continue;
+  // ✅ step size based on frequency
+  let step = 1;
+  if (frequency === "every-2-days") step = 2;
+  if (frequency === "weekly") step = 7;
 
-      const dateKey = date.format('YYYY-MM-DD');
+  for (let i = 0; i < 7; i += step) {
+    const date = startDate.add(i, "day");
+    if (endDate && date.isAfter(endDate, "day")) continue;
 
-      timesPerDay.forEach((time) => {
-        const eventDescription = `${name} - ${dosage} at ${time}`;
-        if (!updatedEvents[dateKey]) updatedEvents[dateKey] = [];
-        updatedEvents[dateKey].push(eventDescription);
+    const dateKey = date.format("YYYY-MM-DD");
 
-        if (Notification.permission === 'granted') {
-          const dateTime = dayjs(`${dateKey}T${time}`);
-          if (dateTime.isAfter(dayjs())) {
-            scheduleNotification('Pill Reminder', eventDescription, dateTime);
-          }
+    timesPerDay.forEach((time) => {
+      const eventDescription = `${name} - ${dosage} at ${time}`;
+      if (!updatedEvents[dateKey]) updatedEvents[dateKey] = [];
+      updatedEvents[dateKey].push(eventDescription);
+
+      if (Notification.permission === "granted") {
+        const dateTime = dayjs(`${dateKey}T${time}`);
+        if (dateTime.isAfter(dayjs())) {
+          scheduleNotification("Pill Reminder", eventDescription, dateTime);
         }
-      });
-    }
-
-    setEvents(updatedEvents);
-    savePrescriptionToFirebase(prescription, updatedEvents);
-
-    setPrescription({
-      name: '',
-      dosage: '',
-      frequency: 'daily',
-      startDate: dayjs(),
-      endDate: null,
-      timesPerDay: ['08:00']
+      }
     });
-  };
+  }
+
+  setEvents(updatedEvents);
+  savePrescriptionToFirebase(prescription, updatedEvents);
+
+  setPrescription({
+    name: "",
+    dosage: "",
+    frequency: "daily",
+    startDate: dayjs(),
+    endDate: null,
+    timesPerDay: ["08:00"],
+  });
+
+
+};
+
 
   const daysOfWeek = getNextWeekDays(selectedDate);
 
   return (
     <LocalizationProvider dateAdapter={AdapterDayjs}>
-      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', p: 3 }}>
-        <Typography variant="h6" sx={{ mb: 2 }}>Prescription Dashboard</Typography>
-
-        {/* Prescription Form */}
-        <Box sx={{ width: '100%', mb: 2 }}>
-          <TextField fullWidth label="Prescription Name" value={prescription.name}
-            onChange={(e) => setPrescription({ ...prescription, name: e.target.value })}
-            sx={{ mb: 2 }} />
-          <TextField fullWidth label="Dosage" value={prescription.dosage}
-            onChange={(e) => setPrescription({ ...prescription, dosage: e.target.value })}
-            sx={{ mb: 2 }} />
-
-          <FormControl fullWidth sx={{ mb: 2 }}>
-            <InputLabel>Frequency</InputLabel>
-            <Select
-              value={prescription.frequency}
-              onChange={(e) => setPrescription({ ...prescription, frequency: e.target.value })}
-              label="Frequency">
-              <MenuItem value="daily">Daily</MenuItem>
-              <MenuItem value="every-2-days">Every 2 Days</MenuItem>
-              <MenuItem value="weekly">Weekly</MenuItem>
-            </Select>
-          </FormControl>
-
-          {/* Time Inputs */}
-          <Typography variant="subtitle1" sx={{ mb: 1 }}>Times Per Day</Typography>
-          {prescription.timesPerDay.map((time, idx) => (
-            <Box key={idx} sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-              <TextField
-                type="time"
-                value={time}
-                onChange={(e) => {
-                  const times = [...prescription.timesPerDay];
-                  times[idx] = e.target.value;
-                  setPrescription({ ...prescription, timesPerDay: times });
-                }}
-                sx={{ mr: 2 }}
-              />
-              <Button
-                variant="outlined"
-                color="error"
-                onClick={() => {
-                  const filtered = prescription.timesPerDay.filter((_, i) => i !== idx);
-                  setPrescription({ ...prescription, timesPerDay: filtered });
-                }}
-                disabled={prescription.timesPerDay.length === 1}
-              >
-                Remove
-              </Button>
-            </Box>
-          ))}
+      <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', p: 3, width: '100%' }}>
+        
+        {/* Header with Linked User Toggle */}
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', width: '100%', mb: 2 }}>
+          <Typography variant="h6">
+            {viewLinked ? "Linked User's Dashboard" : "My Prescription Dashboard"}
+          </Typography>
           <Button
             variant="outlined"
-            onClick={() => {
-              setPrescription({
-                ...prescription,
-                timesPerDay: [...prescription.timesPerDay, '08:00'],
-              });
-            }}
-            sx={{ mb: 2 }}
+            onClick={() => setViewLinked((prev) => !prev)}
           >
-            Add Time
+            {viewLinked ? "View My Dashboard" : "View Linked User"}
           </Button>
-
-          {/* Date Inputs */}
-          <TextField fullWidth label="Start Date" type="date"
-            value={prescription.startDate.format('YYYY-MM-DD')}
-            onChange={(e) => setPrescription({ ...prescription, startDate: dayjs(e.target.value) })}
-            sx={{ mb: 2 }}
-            InputLabelProps={{ shrink: true }}
-          />
-          <TextField fullWidth label="End Date (Optional)" type="date"
-            value={prescription.endDate ? prescription.endDate.format('YYYY-MM-DD') : ''}
-            onChange={(e) => setPrescription({
-              ...prescription,
-              endDate: e.target.value ? dayjs(e.target.value) : null
-            })}
-            sx={{ mb: 2 }}
-            InputLabelProps={{ shrink: true }}
-          />
         </Box>
 
-        <Button variant="contained" onClick={handleAddPrescription} sx={{ width: '100%', mb: 4 }}>
-          Add Prescription Reminder
-        </Button>
+        {/* Prescription Form (only show if viewing own dashboard) */}
+        {!viewLinked && (
+          <Box sx={{ width: '100%', mb: 2 }}>
+            <TextField fullWidth label="Prescription Name" value={prescription.name}
+              onChange={(e) => setPrescription({ ...prescription, name: e.target.value })}
+              sx={{ mb: 2 }} />
+            <TextField fullWidth label="Dosage" value={prescription.dosage}
+              onChange={(e) => setPrescription({ ...prescription, dosage: e.target.value })}
+              sx={{ mb: 2 }} />
+
+            <FormControl fullWidth sx={{ mb: 2 }}>
+              <InputLabel>Frequency</InputLabel>
+              <Select
+                value={prescription.frequency}
+                onChange={(e) => setPrescription({ ...prescription, frequency: e.target.value })}
+                label="Frequency">
+                <MenuItem value="daily">Daily</MenuItem>
+                <MenuItem value="every-2-days">Every 2 Days</MenuItem>
+                <MenuItem value="weekly">Weekly</MenuItem>
+              </Select>
+            </FormControl>
+
+            <Typography variant="subtitle1" sx={{ mb: 1 }}>Times Per Day</Typography>
+            {prescription.timesPerDay.map((time, idx) => (
+              <Box key={idx} sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                <TextField
+                  type="time"
+                  value={time}
+                  onChange={(e) => {
+                    const times = [...prescription.timesPerDay];
+                    times[idx] = e.target.value;
+                    setPrescription({ ...prescription, timesPerDay: times });
+                  }}
+                  sx={{ mr: 2 }}
+                />
+                <Button
+                  variant="outlined"
+                  color="error"
+                  onClick={() => {
+                    const filtered = prescription.timesPerDay.filter((_, i) => i !== idx);
+                    setPrescription({ ...prescription, timesPerDay: filtered });
+                  }}
+                  disabled={prescription.timesPerDay.length === 1}
+                >
+                  Remove
+                </Button>
+              </Box>
+            ))}
+            <Button
+              variant="outlined"
+              onClick={() => {
+                setPrescription({
+                  ...prescription,
+                  timesPerDay: [...prescription.timesPerDay, '08:00'],
+                });
+              }}
+              sx={{ mb: 2 }}
+            >
+              Add Time
+            </Button>
+
+            <TextField fullWidth label="Start Date" type="date"
+              value={prescription.startDate.format('YYYY-MM-DD')}
+              onChange={(e) => setPrescription({ ...prescription, startDate: dayjs(e.target.value) })}
+              sx={{ mb: 2 }}
+              InputLabelProps={{ shrink: true }}
+            />
+            <TextField fullWidth label="End Date (Optional)" type="date"
+              value={prescription.endDate ? prescription.endDate.format('YYYY-MM-DD') : ''}
+              onChange={(e) => setPrescription({
+                ...prescription,
+                endDate: e.target.value ? dayjs(e.target.value) : null
+              })}
+              sx={{ mb: 2 }}
+              InputLabelProps={{ shrink: true }}
+            />
+
+            <Button variant="contained" onClick={handleAddPrescription} sx={{ width: '100%', mb: 4 }}>
+              Add Prescription Reminder
+            </Button>
+          </Box>
+        )}
 
         {/* Display Weekly Events */}
         <Box sx={{ width: '100%' }}>
@@ -228,7 +248,7 @@ export default function Dashboard() {
                           {event} {isTaken && "✔️"}
                         </Typography>
 
-                        {isToday && (
+                        {isToday && !viewLinked && (
                           <Button
                             variant="outlined"
                             size="small"
