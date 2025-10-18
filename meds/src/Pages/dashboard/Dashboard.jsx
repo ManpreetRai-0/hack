@@ -6,7 +6,7 @@ import {
 import dayjs from 'dayjs';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
-import { db } from '../../FIREBASE.env';
+import { db } from '../../firebase.jsx';
 import { collection, addDoc } from 'firebase/firestore';
 
 export default function Dashboard() {
