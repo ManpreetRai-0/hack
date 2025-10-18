@@ -6,7 +6,7 @@ import {
 import dayjs from 'dayjs';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
-import { db } from '../../firebase.jsx';
+import { auth, db } from '../../firebase';
 import { collection, addDoc } from 'firebase/firestore';
 
 export default function Dashboard() {
@@ -43,15 +43,35 @@ export default function Dashboard() {
 
   const savePrescriptionToFirebase = async (prescriptionData, eventsByDate) => {
     try {
-      await addDoc(collection(db, 'prescriptions'), {
+      const user = auth.currentUser;
+
+      if (!user) {
+        throw new Error('User not authenticated');
+      }
+
+      const userEmail = user.email;
+      const sanitizedEmail = userEmail.replace(/\./g, '_');
+      console.log("sanitizedEmail: ", sanitizedEmail);
+
+      // Get a reference to the user's subcollection "prescriptions"
+      const prescriptionsRef = collection(db, 'users', sanitizedEmail, 'prescriptions');
+
+      // Add prescription to that collection
+      await addDoc(prescriptionsRef, {
         ...prescriptionData,
-        createdAt: new Date().toISOString(),
+        startDate: prescriptionData.startDate.toDate(), // ✅ Convert from Day.js to Date
+        endDate: prescriptionData.endDate ? prescriptionData.endDate.toDate() : null, // ✅ handle optional
+        createdAt: new Date(),
         eventsByDate,
       });
+
+
+      console.log('✅ Prescription saved successfully.');
     } catch (error) {
-      console.error('Error saving to Firebase:', error);
+      console.error('❌ Error saving to Firebase:', error);
     }
   };
+
 
   const handleAddPrescription = () => {
     const { name, dosage, frequency, startDate, endDate, timesPerDay } = prescription;
