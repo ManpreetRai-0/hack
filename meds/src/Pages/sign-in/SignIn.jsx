@@ -17,9 +17,12 @@ import ForgotPassword from './components/ForgotPassword';
 import AppTheme from '../shared-theme/AppTheme';
 import ColorModeSelect from '../shared-theme/ColorModeSelect';
 import { GoogleIcon, FacebookIcon, SitemarkIcon } from './components/CustomIcons';
-import { signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider } from "firebase/auth";
+//import { signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider } from "firebase/auth";
 import { auth, provider } from "../../firebase.jsx"; // adjust path later
 //import { getAuth, signInWithPopup, GoogleAuthProvider } from "firebase/auth";
+import { signInWithEmailAndPassword, createUserWithEmailAndPassword, signInWithPopup, GoogleAuthProvider} from "firebase/auth";
+import { useNavigate } from "react-router-dom";  //For going from sign up to dasboard
+
 
 
 const Card = styled(MuiCard)(({ theme }) => ({
@@ -70,6 +73,7 @@ export default function SignIn(props) {
   const [passwordError, setPasswordError] = React.useState(false);
   const [passwordErrorMessage, setPasswordErrorMessage] = React.useState('');
   const [open, setOpen] = React.useState(false);
+  const navigate = useNavigate();
 
   const handleClickOpen = () => {
     setOpen(true);
@@ -79,17 +83,25 @@ export default function SignIn(props) {
     setOpen(false);
   };
 
-  const handleSubmit = (event) => {
-    if (emailError || passwordError) {
-      event.preventDefault();
-      return;
-    }
+  async function handleSubmit(event) {
+    event.preventDefault();
+    if (!validateInputs()) return;
+
     const data = new FormData(event.currentTarget);
-    console.log({
-      email: data.get('email'),
-      password: data.get('password'),
-    });
-  };
+    const email = data.get("email");
+    const password = data.get("password");
+
+    try {
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+      console.log("Signed in user:", userCredential.user);
+      navigate("/Dashboard");
+    } catch (error) {
+      console.error("Error signing in:", error.message);
+      setPasswordError(true);
+      setPasswordErrorMessage(error.message);
+    }
+  }
+
 
   async function googleSignInPopUp() {
     //const auth = getAuth();
@@ -102,6 +114,7 @@ export default function SignIn(props) {
       const user = result.user;
       // IdP data available using getAdditionalUserInfo(result)
       // ...
+      navigate("/Dashboard");
     }).catch((error) => {
       // Handle Errors here.
       const errorCode = error.code;
@@ -113,6 +126,25 @@ export default function SignIn(props) {
       // ...
     });
   }
+
+  async function handleSignUp(event) {
+    event.preventDefault();
+    const email = document.getElementById("email").value;
+    const password = document.getElementById("password").value;
+    //const navigate = useNavigate();  
+
+    try {
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      console.log("User signed up:", userCredential.user);
+      // redirect or set global state here
+      navigate("/Dashboard");
+    } catch (error) {
+      console.error("Error signing up:", error.message);
+      setEmailError(true);
+      setEmailErrorMessage(error.message);
+    }
+  }
+
 
   const validateInputs = () => {
     const email = document.getElementById('email');
@@ -211,7 +243,7 @@ export default function SignIn(props) {
               type="submit"
               fullWidth
               variant="contained"
-              onClick={validateInputs}
+              //onClick={validateInputs}
             >
               Sign in
             </Button>
@@ -230,19 +262,19 @@ export default function SignIn(props) {
             <Button
               fullWidth
               variant="outlined"
+              onClick={handleSignUp}
+            >
+              Sign up with Email
+            </Button>
+            <Button
+              fullWidth
+              variant="outlined"
               onClick={googleSignInPopUp}
               startIcon={<GoogleIcon />}
             >
               Sign in with Google
             </Button>
-            <Button
-              fullWidth
-              variant="outlined"
-              onClick={() => alert('Sign in with Facebook')}
-              startIcon={<FacebookIcon />}
-            >
-              Sign in with Facebook
-            </Button>
+            
             <Typography sx={{ textAlign: 'center' }}>
               Don&apos;t have an account?{' '}
               <Link

@@ -7,20 +7,18 @@ import './Pages/sign-in/SignIn'
 import SignIn from './Pages/sign-in/SignIn'
 import './Pages/dashboard/Dashboard'
 import Dashboard from './Pages/dashboard/Dashboard'
-import { Routes, Route } from 'react-router';
+//import { Routes, Route } from 'react-router';  //Commented out for testing
+import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 
 function App() {
-  const [count, setCount] = useState(0)
-
   return (
-    <>
+    
       <Routes>
         <Route path="/" element={<SignIn />} />
-        <Route path="/dashboard" element={<Dashboard />} />
-        
+        <Route path="/Dashboard" element={<Dashboard />} />
       </Routes>
-    </>
-  )
+    
+  );
 }
 
-export default App
+export default App;
