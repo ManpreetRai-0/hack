@@ -17,6 +17,10 @@ import ForgotPassword from './components/ForgotPassword';
 import AppTheme from '../shared-theme/AppTheme';
 import ColorModeSelect from '../shared-theme/ColorModeSelect';
 import { GoogleIcon, FacebookIcon, SitemarkIcon } from './components/CustomIcons';
+import { signInWithEmailAndPassword, signInWithPopup, GoogleAuthProvider } from "firebase/auth";
+import { auth, provider } from "../../firebase.jsx"; // adjust path later
+//import { getAuth, signInWithPopup, GoogleAuthProvider } from "firebase/auth";
+
 
 const Card = styled(MuiCard)(({ theme }) => ({
   display: 'flex',
@@ -87,6 +91,29 @@ export default function SignIn(props) {
     });
   };
 
+  async function googleSignInPopUp() {
+    //const auth = getAuth();
+    signInWithPopup(auth, provider)
+    .then((result) => {
+      // This gives you a Google Access Token. You can use it to access the Google API.
+      const credential = GoogleAuthProvider.credentialFromResult(result);
+      const token = credential.accessToken;
+      // The signed-in user info.
+      const user = result.user;
+      // IdP data available using getAdditionalUserInfo(result)
+      // ...
+    }).catch((error) => {
+      // Handle Errors here.
+      const errorCode = error.code;
+      const errorMessage = error.message;
+      // The email of the user's account used.
+      const email = error.customData.email;
+      // The AuthCredential type that was used.
+      const credential = GoogleAuthProvider.credentialFromError(error);
+      // ...
+    });
+  }
+
   const validateInputs = () => {
     const email = document.getElementById('email');
     const password = document.getElementById('password');
@@ -113,6 +140,8 @@ export default function SignIn(props) {
 
     return isValid;
   };
+
+  
 
   return (
     <AppTheme {...props}>
@@ -201,7 +230,7 @@ export default function SignIn(props) {
             <Button
               fullWidth
               variant="outlined"
-              onClick={() => alert('Sign in with Google')}
+              onClick={googleSignInPopUp}
               startIcon={<GoogleIcon />}
             >
               Sign in with Google
