@@ -12,6 +12,7 @@ import { collection, addDoc } from 'firebase/firestore';
 export default function Dashboard() {
   const [selectedDate, setSelectedDate] = React.useState(dayjs());
   const [events, setEvents] = React.useState({});
+  const [takenEvents, setTakenEvents] = React.useState({}); // ✅ Track taken meds
   const [prescription, setPrescription] = React.useState({
     name: '',
     dosage: '',
@@ -20,6 +21,8 @@ export default function Dashboard() {
     endDate: null,
     timesPerDay: ['08:00']
   });
+
+  const todayKey = dayjs().format("YYYY-MM-DD");
 
   React.useEffect(() => {
     if (Notification.permission !== 'granted') {
@@ -44,34 +47,24 @@ export default function Dashboard() {
   const savePrescriptionToFirebase = async (prescriptionData, eventsByDate) => {
     try {
       const user = auth.currentUser;
+      if (!user) throw new Error('User not authenticated');
 
-      if (!user) {
-        throw new Error('User not authenticated');
-      }
-
-      const userEmail = user.email;
-      const sanitizedEmail = userEmail.replace(/\./g, '_');
-      console.log("sanitizedEmail: ", sanitizedEmail);
-
-      // Get a reference to the user's subcollection "prescriptions"
+      const sanitizedEmail = user.email.replace(/\./g, '_');
       const prescriptionsRef = collection(db, 'users', sanitizedEmail, 'prescriptions');
 
-      // Add prescription to that collection
       await addDoc(prescriptionsRef, {
         ...prescriptionData,
-        startDate: prescriptionData.startDate.toDate(), // ✅ Convert from Day.js to Date
-        endDate: prescriptionData.endDate ? prescriptionData.endDate.toDate() : null, // ✅ handle optional
+        startDate: prescriptionData.startDate.toDate(),
+        endDate: prescriptionData.endDate ? prescriptionData.endDate.toDate() : null,
         createdAt: new Date(),
-        eventsByDate,
+        //eventsByDate,
       });
-
 
       console.log('✅ Prescription saved successfully.');
     } catch (error) {
       console.error('❌ Error saving to Firebase:', error);
     }
   };
-
 
   const handleAddPrescription = () => {
     const { name, dosage, frequency, startDate, endDate, timesPerDay } = prescription;
@@ -213,11 +206,50 @@ export default function Dashboard() {
                   <Typography>{day.format('MMM D')}</Typography>
                 </Box>
                 <Box sx={{ mt: 1 }}>
-                  {(events[dateKey] || []).map((event, idx) => (
-                    <Box key={idx} sx={{ backgroundColor: '#f9f9f9', p: 1, my: 0.5, borderRadius: 1 }}>
-                      <Typography variant="body2">{event}</Typography>
-                    </Box>
-                  ))}
+                  {(events[dateKey] || []).map((event, idx) => {
+                    const isToday = dateKey === todayKey;
+                    const eventKey = `${dateKey}-${idx}`;
+                    const isTaken = takenEvents[eventKey];
+
+                    return (
+                      <Box
+                        key={idx}
+                        sx={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          backgroundColor: isTaken ? "#e8f5e9" : "#f9f9f9",
+                          p: 1,
+                          my: 0.5,
+                          borderRadius: 1,
+                        }}
+                      >
+                        <Typography variant="body2">
+                          {event} {isTaken && "✔️"}
+                        </Typography>
+
+                        {isToday && (
+                          <Button
+                            variant="outlined"
+                            size="small"
+                            onClick={() =>
+                              setTakenEvents((prev) => ({
+                                ...prev,
+                                [eventKey]: !isTaken,
+                              }))
+                            }
+                            sx={{
+                              ml: 2,
+                              bgcolor: isTaken ? "lightgreen" : "white",
+                              "&:hover": { bgcolor: isTaken ? "lightgreen" : "#f0f0f0" },
+                            }}
+                          >
+                            {isTaken ? "Taken" : "Mark Taken"}
+                          </Button>
+                        )}
+                      </Box>
+                    );
+                  })}
                   {!(events[dateKey] && events[dateKey].length) && (
                     <Typography variant="body2" sx={{ fontStyle: 'italic' }}>
                       No events for this day.
