@@ -12,21 +12,17 @@ import {
   collection, addDoc, query, where,
   getDocs, doc, updateDoc, setDoc, getDoc, arrayUnion
 } from 'firebase/firestore';
-import { useNavigate } from "react-router-dom";  //For going from sign up to dasboard
+import { useNavigate } from "react-router-dom";
 
 export default function Dashboard() {
-  const [selectedDate] = React.useState(dayjs());
-  const [events, setEvents] = React.useState({});
-  const [takenEvents, setTakenEvents] = React.useState({});
+  const [selectedLinkedUser, setSelectedLinkedUser] = React.useState("");
+  const [linkedUsers, setLinkedUsers] = React.useState([]);
+  const [pendingInvites, setPendingInvites] = React.useState([]);
   const [inviteOpen, setInviteOpen] = React.useState(false);
   const [inviteEmail, setInviteEmail] = React.useState("");
-  const [pendingInvites, setPendingInvites] = React.useState([]);
-  const [linkedUsers, setLinkedUsers] = React.useState([]);
-  const [selectedLinkedUser, setSelectedLinkedUser] = React.useState("");
-
-  const navigate = useNavigate()
-
-  const [prescription, setPrescription] = React.useState({
+  const [prescriptions, setPrescriptions] = React.useState([]);
+  const [takenEvents, setTakenEvents] = React.useState({});
+  const [prescriptionForm, setPrescriptionForm] = React.useState({
     name: '',
     dosage: '',
     frequency: 'daily',
@@ -35,134 +31,106 @@ export default function Dashboard() {
     timesPerDay: ['08:00']
   });
 
-  const todayKey = dayjs().format("YYYY-MM-DD");
-  const daysOfWeek = [...Array(7)].map((_, i) => selectedDate.add(i, 'day'));
+  const navigate = useNavigate();
+  const todayKey = dayjs().format('YYYY-MM-DD');
+  const daysOfWeek = [...Array(7)].map((_, i) => dayjs().add(i, 'day'));
 
   // ------------------ Firebase Fetching ------------------
   React.useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async (user) => {
       if (!user) return;
 
-      if (Notification.permission !== 'granted') {
-        Notification.requestPermission();
-      }
+      if (Notification.permission !== 'granted') Notification.requestPermission();
 
-      fetchOwnPrescriptions();
-      checkInvites();
-
-      const userDocRef = doc(db, "users", user.email.replace(/\./g, "_"));
-      const userDocSnap = await getDoc(userDocRef);
-      if (userDocSnap.exists()) {
-        const linked = userDocSnap.data().linkedUsers || [];
-        setLinkedUsers(linked);
-      }
+      await fetchPrescriptions();
+      await fetchLinkedUsers();
+      await checkInvites();
     });
 
     return () => unsubscribe();
   }, []);
 
   React.useEffect(() => {
-    if (!selectedLinkedUser) {
-      fetchOwnPrescriptions();
-    } else {
-      fetchLinkedUserPrescriptions(selectedLinkedUser);
-    }
+    fetchPrescriptions();
   }, [selectedLinkedUser]);
 
-  const fetchOwnPrescriptions = async () => {
+  // ------------------ Prescription Fetching ------------------
+  const fetchPrescriptions = async () => {
     const user = auth.currentUser;
     if (!user) return;
 
-    const sanitizedEmail = user.email.replace(/\./g, '_');
-    const prescriptionsRef = collection(db, "users", sanitizedEmail, "prescriptions");
+    const email = (selectedLinkedUser || user.email).replace(/\./g, '_');
+    const prescriptionsRef = collection(db, 'users', email, 'prescriptions');
     const snapshot = await getDocs(prescriptionsRef);
 
-    let allEvents = {};
-
-    snapshot.forEach((doc) => {
-      const data = doc.data();
-      if (data.eventsByDate) {
-        for (const [date, events] of Object.entries(data.eventsByDate)) {
-          if (!allEvents[date]) allEvents[date] = [];
-          allEvents[date] = [...allEvents[date], ...events];
-        }
-      }
-    });
-
-    setEvents(allEvents);
-  };
-
-  const fetchLinkedUserPrescriptions = async (linkedEmail) => {
-    if (!linkedEmail) return;
-
-    const sanitizedEmail = linkedEmail.replace(/\./g, "_");
-    const prescriptionsRef = collection(db, "users", sanitizedEmail, "prescriptions");
-    const snapshot = await getDocs(prescriptionsRef);
-
-    let allEvents = {};
-
-    snapshot.forEach((doc) => {
-      const data = doc.data();
-      if (data.eventsByDate) {
-        for (const [date, events] of Object.entries(data.eventsByDate)) {
-          if (!allEvents[date]) allEvents[date] = [];
-          allEvents[date] = [...allEvents[date], ...events];
-        }
-      }
-    });
-
-    setEvents(allEvents);
-  };
-
-  // ------------------ Prescription Helpers ------------------
-  const savePrescriptionToFirebase = async (prescriptionData, eventsByDate) => {
-    try {
-      const user = auth.currentUser;
-      if (!user) throw new Error('User not authenticated');
-
-      const sanitizedEmail = user.email.replace(/\./g, '_');
-      const prescriptionsRef = collection(db, 'users', sanitizedEmail, 'prescriptions');
-
-      await addDoc(prescriptionsRef, {
-        ...prescriptionData,
-        startDate: prescriptionData.startDate.toDate(),
-        endDate: prescriptionData.endDate ? prescriptionData.endDate.toDate() : null,
-        eventsByDate
+    const fetched = [];
+    snapshot.forEach(docSnap => {
+      const data = docSnap.data();
+      fetched.push({
+        ...data,
+        startDate: dayjs(data.startDate.toDate()),
+        endDate: data.endDate ? dayjs(data.endDate.toDate()) : null
       });
-    } catch (error) {
-      console.error('❌ Error saving to Firebase:', error);
+    });
+
+    setPrescriptions(fetched);
+  };
+
+  const fetchLinkedUsers = async () => {
+    const user = auth.currentUser;
+    if (!user) return;
+
+    const userDoc = await getDoc(doc(db, 'users', user.email.replace(/\./g, '_')));
+    if (userDoc.exists()) {
+      setLinkedUsers(userDoc.data().linkedUsers || []);
     }
   };
 
-  const handleAddPrescription = () => {
-    const { name, dosage, frequency, startDate, endDate, timesPerDay } = prescription;
+  // ------------------ Compute Next 7 Days ------------------
+  const computeNext7DaysEvents = () => {
+    const events = {};
+
+    daysOfWeek.forEach(day => {
+      const key = day.format('YYYY-MM-DD');
+      events[key] = [];
+
+      prescriptions.forEach(p => {
+        const { name, dosage, frequency, startDate, endDate, timesPerDay } = p;
+        if (day.isBefore(startDate, 'day')) return;
+        if (endDate && day.isAfter(endDate, 'day')) return;
+
+        const step = frequency === 'every-2-days' ? 2 : frequency === 'weekly' ? 7 : 1;
+        const diff = day.diff(startDate, 'day');
+        if (diff % step === 0) {
+          timesPerDay.forEach(time => events[key].push(`${name} - ${dosage} at ${time}`));
+        }
+      });
+    });
+
+    return events;
+  };
+
+  const events = computeNext7DaysEvents();
+
+  // ------------------ Add Prescription ------------------
+  const savePrescription = async () => {
+    const user = auth.currentUser;
+    if (!user) return;
+
+    const { name, dosage, frequency, startDate, endDate, timesPerDay } = prescriptionForm;
     if (!name || !dosage || timesPerDay.length === 0) return;
 
-    const updatedEvents = { ...events };
-    let step = frequency === "every-2-days" ? 2 : frequency === "weekly" ? 7 : 1;
+    const sanitizedEmail = user.email.replace(/\./g, '_');
+    const prescriptionsRef = collection(db, 'users', sanitizedEmail, 'prescriptions');
 
-    for (let i = 0; i < 7; i += step) {
-      const date = startDate.add(i, "day");
-      if (endDate && date.isAfter(endDate, "day")) continue;
-
-      const dateKey = date.format("YYYY-MM-DD");
-      timesPerDay.forEach(time => {
-        if (!updatedEvents[dateKey]) updatedEvents[dateKey] = [];
-        updatedEvents[dateKey].push(`${name} - ${dosage} at ${time}`);
-      });
-    }
-
-    setEvents(updatedEvents);
-    savePrescriptionToFirebase(prescription, updatedEvents);
-
-    setPrescription({
-      name: '',
-      dosage: '',
-      frequency: 'daily',
-      startDate: dayjs(),
-      endDate: null,
-      timesPerDay: ['08:00']
+    await addDoc(prescriptionsRef, {
+      name, dosage, frequency, startDate: startDate.toDate(),
+      endDate: endDate ? endDate.toDate() : null,
+      timesPerDay
     });
+
+    setPrescriptionForm({ name: '', dosage: '', frequency: 'daily', startDate: dayjs(), endDate: null, timesPerDay: ['08:00'] });
+    fetchPrescriptions();
   };
 
   // ------------------ Invite System ------------------
@@ -170,33 +138,26 @@ export default function Dashboard() {
     const user = auth.currentUser;
     if (!user) return;
 
-    try {
-      await addDoc(collection(db, "invitations"), {
-        from: user.email,
-        to: inviteEmail,
-        status: "pending",
-        createdAt: new Date(),
-      });
-      setInviteOpen(false);
-      setInviteEmail("");
-    } catch (err) {
-      console.error("Error sending invite:", err);
-    }
+    await addDoc(collection(db, 'invitations'), {
+      from: user.email,
+      to: inviteEmail,
+      status: 'pending',
+      createdAt: new Date()
+    });
+
+    setInviteOpen(false);
+    setInviteEmail('');
   };
 
   const checkInvites = async () => {
     const user = auth.currentUser;
     if (!user) return;
 
-    const q = query(
-      collection(db, "invitations"),
-      where("to", "==", user.email),
-      where("status", "==", "pending")
-    );
-
+    const q = query(collection(db, 'invitations'), where('to', '==', user.email), where('status', '==', 'pending'));
     const snapshot = await getDocs(q);
+
     const invites = [];
-    snapshot.forEach((docSnap) => invites.push({ id: docSnap.id, ...docSnap.data() }));
+    snapshot.forEach(docSnap => invites.push({ id: docSnap.id, ...docSnap.data() }));
     setPendingInvites(invites);
   };
 
@@ -204,64 +165,42 @@ export default function Dashboard() {
     const user = auth.currentUser;
     if (!user) return;
 
-    const sanitizedFrom = fromEmail.replace(/\./g, "_");
-    const sanitizedTo = user.email.replace(/\./g, "_");
-
-    await updateDoc(doc(db, "invitations", inviteId), { status: "accepted" });
-    await setDoc(doc(db, "users", sanitizedFrom), { linkedUsers: arrayUnion(user.email) }, { merge: true });
-    await setDoc(doc(db, "users", sanitizedTo), { linkedUsers: arrayUnion(fromEmail) }, { merge: true });
+    await updateDoc(doc(db, 'invitations', inviteId), { status: 'accepted' });
+    await setDoc(doc(db, 'users', fromEmail.replace(/\./g, '_')), { linkedUsers: arrayUnion(user.email) }, { merge: true });
+    await setDoc(doc(db, 'users', user.email.replace(/\./g, '_')), { linkedUsers: arrayUnion(fromEmail) }, { merge: true });
 
     checkInvites();
   };
 
   const declineInvite = async (inviteId) => {
-    await updateDoc(doc(db, "invitations", inviteId), { status: "declined" });
+    await updateDoc(doc(db, 'invitations', inviteId), { status: 'declined' });
     checkInvites();
   };
 
   // ------------------ UI ------------------
   return (
     <LocalizationProvider dateAdapter={AdapterDayjs}>
-      <Box sx={{ maxWidth: 900, mx: "auto", p: 4 }}>
+      <Box sx={{ maxWidth: 900, mx: 'auto', p: 4 }}>
         {/* Header */}
-        <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', mb: 4 }}>
-          
-
-            {/* Logout Button */}
-            <Button
-              variant="outlined"
-              color="error"
-              onClick={async () => {
-                await auth.signOut();
-                navigate('/')
-              }}
-              sx={{ borderRadius: 2 }}
-            >
-              Logout
-            </Button>
+        <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 4 }}>
+          <Button variant="outlined" color="error" onClick={async () => { await auth.signOut(); navigate('/'); }}>
+            Logout
+          </Button>
         </Box>
 
-        {/* Header */}
+        {/* Linked User Selector */}
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
           <Typography variant="h4" fontWeight="bold">
             {selectedLinkedUser ? `${selectedLinkedUser}'s Dashboard` : "My Prescription Dashboard"}
           </Typography>
 
           <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-            <Button variant="contained" color="secondary" onClick={() => setInviteOpen(true)}>
-              Invite User
-            </Button>
-
+            <Button variant="contained" color="secondary" onClick={() => setInviteOpen(true)}>Invite User</Button>
             <FormControl sx={{ minWidth: 250 }}>
               <InputLabel>View Linked User</InputLabel>
-              <Select
-                value={selectedLinkedUser || ""}
-                onChange={(e) => setSelectedLinkedUser(e.target.value)}
-              >
+              <Select value={selectedLinkedUser || ""} onChange={e => setSelectedLinkedUser(e.target.value)}>
                 <MenuItem value="">My Dashboard</MenuItem>
-                {linkedUsers.map(email => (
-                  <MenuItem key={email} value={email}>{email}</MenuItem>
-                ))}
+                {linkedUsers.map(email => <MenuItem key={email} value={email}>{email}</MenuItem>)}
               </Select>
             </FormControl>
           </Box>
@@ -269,15 +208,13 @@ export default function Dashboard() {
 
         {/* Pending Invites */}
         {pendingInvites.length > 0 && (
-          <Paper sx={{ p: 3, mb: 4 }} elevation={3}>
-            <Typography variant="h6" gutterBottom>Pending Invites</Typography>
+          <Paper sx={{ p: 3, mb: 4 }}>
+            <Typography variant="h6">Pending Invites</Typography>
             {pendingInvites.map(invite => (
-              <Box key={invite.id} sx={{ display: "flex", alignItems: "center", mb: 2 }}>
+              <Box key={invite.id} sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
                 <Typography sx={{ flex: 1 }}>{invite.from} invited you</Typography>
-                <Button variant="contained" size="small" color="primary" sx={{ mr: 1 }}
-                  onClick={() => acceptInvite(invite.id, invite.from)}>Accept</Button>
-                <Button variant="outlined" size="small" color="error"
-                  onClick={() => declineInvite(invite.id)}>Decline</Button>
+                <Button variant="contained" size="small" color="primary" sx={{ mr: 1 }} onClick={() => acceptInvite(invite.id, invite.from)}>Accept</Button>
+                <Button variant="outlined" size="small" color="error" onClick={() => declineInvite(invite.id)}>Decline</Button>
               </Box>
             ))}
           </Paper>
@@ -297,97 +234,73 @@ export default function Dashboard() {
 
         {/* Prescription Form */}
         {!selectedLinkedUser && (
-          <Paper sx={{ p: 3, mb: 4 }} elevation={3}>
+          <Paper sx={{ p: 3, mb: 4 }}>
             <Typography variant="h6" gutterBottom>Add a New Prescription</Typography>
             <Divider sx={{ mb: 2 }} />
-
-            <TextField fullWidth label="Prescription Name" value={prescription.name}
-              onChange={e => setPrescription({ ...prescription, name: e.target.value })} sx={{ mb: 2 }} />
-            <TextField fullWidth label="Dosage" value={prescription.dosage}
-              onChange={e => setPrescription({ ...prescription, dosage: e.target.value })} sx={{ mb: 2 }} />
-
+            <TextField fullWidth label="Name" value={prescriptionForm.name} onChange={e => setPrescriptionForm({ ...prescriptionForm, name: e.target.value })} sx={{ mb: 2 }} />
+            <TextField fullWidth label="Dosage" value={prescriptionForm.dosage} onChange={e => setPrescriptionForm({ ...prescriptionForm, dosage: e.target.value })} sx={{ mb: 2 }} />
             <FormControl fullWidth sx={{ mb: 2 }}>
               <InputLabel>Frequency</InputLabel>
-              <Select value={prescription.frequency} onChange={e => setPrescription({ ...prescription, frequency: e.target.value })}>
+              <Select value={prescriptionForm.frequency} onChange={e => setPrescriptionForm({ ...prescriptionForm, frequency: e.target.value })}>
                 <MenuItem value="daily">Daily</MenuItem>
                 <MenuItem value="every-2-days">Every 2 Days</MenuItem>
                 <MenuItem value="weekly">Weekly</MenuItem>
               </Select>
             </FormControl>
-
-            <Typography variant="subtitle1" gutterBottom>Times Per Day</Typography>
-            {prescription.timesPerDay.map((time, idx) => (
+            <Typography variant="subtitle1">Times Per Day</Typography>
+            {prescriptionForm.timesPerDay.map((time, idx) => (
               <Box key={idx} sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
                 <TextField type="time" value={time} onChange={e => {
-                  const times = [...prescription.timesPerDay];
-                  times[idx] = e.target.value;
-                  setPrescription({ ...prescription, timesPerDay: times });
+                  const times = [...prescriptionForm.timesPerDay]; times[idx] = e.target.value;
+                  setPrescriptionForm({ ...prescriptionForm, timesPerDay: times });
                 }} sx={{ mr: 2 }} />
-                <Button variant="outlined" color="error" onClick={() => {
-                  const filtered = prescription.timesPerDay.filter((_, i) => i !== idx);
-                  setPrescription({ ...prescription, timesPerDay: filtered });
-                }} disabled={prescription.timesPerDay.length === 1}>Remove</Button>
+                <Button variant="outlined" color="error" disabled={prescriptionForm.timesPerDay.length === 1} onClick={() => {
+                  const times = prescriptionForm.timesPerDay.filter((_, i) => i !== idx);
+                  setPrescriptionForm({ ...prescriptionForm, timesPerDay: times });
+                }}>Remove</Button>
               </Box>
             ))}
-            <Button variant="outlined" onClick={() => setPrescription({ ...prescription, timesPerDay: [...prescription.timesPerDay, '08:00'] })} sx={{ mb: 2 }}>
-              Add Time
-            </Button>
-
-            <TextField fullWidth label="Start Date" type="date"
-              value={prescription.startDate.format('YYYY-MM-DD')}
-              onChange={e => setPrescription({ ...prescription, startDate: dayjs(e.target.value) })}
-              sx={{ mb: 2 }} InputLabelProps={{ shrink: true }} />
-
-            <TextField fullWidth label="End Date (Optional)" type="date"
-              value={prescription.endDate ? prescription.endDate.format('YYYY-MM-DD') : ''}
-              onChange={e => setPrescription({ ...prescription, endDate: e.target.value ? dayjs(e.target.value) : null })}
-              sx={{ mb: 2 }} InputLabelProps={{ shrink: true }} />
-
-            <Button variant="contained" onClick={handleAddPrescription} sx={{ width: '100%' }}>Add Prescription Reminder</Button>
+            <Button variant="outlined" onClick={() => setPrescriptionForm({ ...prescriptionForm, timesPerDay: [...prescriptionForm.timesPerDay, '08:00'] })} sx={{ mb: 2 }}>Add Time</Button>
+            <TextField fullWidth type="date" label="Start Date" value={prescriptionForm.startDate.format('YYYY-MM-DD')} onChange={e => setPrescriptionForm({ ...prescriptionForm, startDate: dayjs(e.target.value) })} sx={{ mb: 2 }} InputLabelProps={{ shrink: true }} />
+            <TextField fullWidth type="date" label="End Date" value={prescriptionForm.endDate ? prescriptionForm.endDate.format('YYYY-MM-DD') : ''} onChange={e => setPrescriptionForm({ ...prescriptionForm, endDate: e.target.value ? dayjs(e.target.value) : null })} sx={{ mb: 2 }} InputLabelProps={{ shrink: true }} />
+            <Button variant="contained" fullWidth onClick={savePrescription}>Add Prescription Reminder</Button>
           </Paper>
         )}
 
         {/* Weekly Schedule */}
-        <Typography variant="h5" sx={{ mb: 2 }}>Weekly Schedule</Typography>
-        {daysOfWeek.map((day, idx) => {
+        <Typography variant="h5" sx={{ mb: 2 }}>Next 7 Days</Typography>
+        {daysOfWeek.map(day => {
           const dateKey = day.format('YYYY-MM-DD');
+          const dayEvents = events[dateKey] || [];
+
           return (
-            <Paper key={idx} sx={{ mb: 3, p: 3 }} elevation={2}>
+            <Paper key={dateKey} sx={{ mb: 3, p: 3 }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
                 <Typography variant="h6">{day.format('dddd')}</Typography>
                 <Typography color="text.secondary">{day.format('MMM D')}</Typography>
               </Box>
               <Divider sx={{ my: 1 }} />
-              <Box sx={{ mt: 1 }}>
-                {(events[dateKey] || []).map((event, i) => {
-                  const eventKey = `${dateKey}-${i}`;
-                  const isTaken = takenEvents[eventKey];
-                  const isToday = dateKey === todayKey;
+              {dayEvents.length === 0 && <Typography variant="body2" sx={{ fontStyle: 'italic', mt: 1 }}>No events for this day.</Typography>}
+              {dayEvents.map((event, i) => {
+                const eventKey = `${dateKey}-${i}`;
+                const isTaken = takenEvents[eventKey];
+                const isToday = dateKey === todayKey;
 
-                  return (
-                    <Box key={i} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 2, my: 1, borderRadius: 2, boxShadow: 1, backgroundColor: isTaken ? "#e8f5e9" : "#f9f9f9" }}>
-                      <Typography variant="body1">{event} {isTaken && "✔️"}</Typography>
-                      {isToday && !selectedLinkedUser && (
-                        <Button
-                          variant="contained"
-                          size="small"
-                          onClick={() => setTakenEvents(prev => ({ ...prev, [eventKey]: !isTaken }))}
-                          sx={{ ml: 2, borderRadius: 2, bgcolor: isTaken ? "success.main" : "primary.main", "&:hover": { bgcolor: isTaken ? "success.dark" : "primary.dark" } }}
-                        >
-                          {isTaken ? "Taken" : "Mark Taken"}
-                        </Button>
-                      )}
-                    </Box>
-                  );
-                })}
-                {!(events[dateKey] && events[dateKey].length) && <Typography variant="body2" sx={{ fontStyle: 'italic', mt: 1 }}>No events for this day.</Typography>}
-              </Box>
+                return (
+                  <Box key={i} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', p: 2, my: 1, borderRadius: 2, boxShadow: 1, backgroundColor: isTaken ? "#e8f5e9" : "#f9f9f9" }}>
+                    <Typography>{event} {isTaken && "✔️"}</Typography>
+                    {isToday && !selectedLinkedUser && (
+                      <Button variant="contained" size="small" onClick={() => setTakenEvents(prev => ({ ...prev, [eventKey]: !isTaken }))}>
+                        {isTaken ? "Taken" : "Mark Taken"}
+                      </Button>
+                    )}
+                  </Box>
+                );
+              })}
             </Paper>
           );
         })}
       </Box>
     </LocalizationProvider>
-
-
   );
 }
