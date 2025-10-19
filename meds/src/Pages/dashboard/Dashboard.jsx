@@ -17,7 +17,7 @@ import { useNavigate } from "react-router-dom";
 export default function Dashboard() {
   const [selectedDate] = React.useState(dayjs());
   const [prescriptions, setPrescriptions] = React.useState([]);
-  const [takenEvents, setTakenEvents] = React.useState({}); // keys: `${dateKey}-${prescId}-${time}`
+  const [takenEvents, setTakenEvents] = React.useState({});
   const [inviteOpen, setInviteOpen] = React.useState(false);
   const [inviteEmail, setInviteEmail] = React.useState("");
   const [pendingInvites, setPendingInvites] = React.useState([]);
@@ -36,7 +36,6 @@ export default function Dashboard() {
   });
 
   const todayKey = dayjs().format("YYYY-MM-DD");
-  const daysOfWeek = [...Array(7)].map((_, i) => selectedDate.add(i, 'day').clone());
 
   // ------------------ Firebase Fetching ------------------
   React.useEffect(() => {
@@ -50,7 +49,6 @@ export default function Dashboard() {
       await fetchPrescriptions();
       await checkInvites();
 
-      // fetch linkedUsers from the user doc
       try {
         const userDocRef = doc(db, "users", user.email.replace(/\./g, "_"));
         const userDocSnap = await getDoc(userDocRef);
@@ -67,7 +65,6 @@ export default function Dashboard() {
   }, []);
 
   React.useEffect(() => {
-    // reload prescriptions anytime selectedLinkedUser changes
     fetchPrescriptions();
   }, [selectedLinkedUser]);
 
@@ -96,7 +93,6 @@ export default function Dashboard() {
 
       setPrescriptions(loaded);
 
-      // load taken events for TODAY for the currently signed-in user's view only
       if (!selectedLinkedUser) {
         const takenRef = collection(db, "users", sanitizedEmail, "taken", todayKey, "events");
         const takenSnapshot = await getDocs(takenRef);
@@ -158,7 +154,6 @@ export default function Dashboard() {
 
     try {
       if (takenEvents[eventKey]) {
-        // unmark
         await deleteDoc(eventRef);
         setTakenEvents(prev => {
           const copy = { ...prev };
@@ -166,7 +161,6 @@ export default function Dashboard() {
           return copy;
         });
       } else {
-        // mark as taken
         await setDoc(eventRef, { text: eventText, taken: true, timestamp: new Date() });
         setTakenEvents(prev => ({ ...prev, [eventKey]: true }));
       }
@@ -233,6 +227,11 @@ export default function Dashboard() {
     await updateDoc(doc(db, "invitations", inviteId), { status: "declined" });
     checkInvites();
   };
+
+  // ------------------ Weekly Schedule Logic (Today-Centered) ------------------
+  const daysOfWeek = React.useMemo(() => {
+    return [...Array(7)].map((_, i) => selectedDate.add(i, 'day').clone());
+  }, [selectedDate]);
 
   // ------------------ Return JSX ------------------
   return (
@@ -361,9 +360,10 @@ export default function Dashboard() {
               <Box sx={{ mt: 1 }}>
                 {prescriptions.flatMap(p => {
                   const step = p.frequency === "every-2-days" ? 2 : p.frequency === "weekly" ? 7 : 1;
-                  const dayIndex = day.diff(p.startDate, "day");
-                  if (dayIndex < 0) return [];
-                  if (p.endDate && day.isAfter(p.endDate, "day")) return [];
+                  const dayIndex = day.startOf('day').diff(p.startDate.startOf('day'), "day");
+
+                  if (dayIndex < 0) return []; // skip days before start
+                  if (p.endDate && day.startOf('day').isAfter(p.endDate.startOf('day'), "day")) return [];
                   if (dayIndex % step !== 0) return [];
 
                   return p.timesPerDay.map(time => {
@@ -395,9 +395,9 @@ export default function Dashboard() {
                 })}
                 {prescriptions.flatMap(p => {
                   const step = p.frequency === "every-2-days" ? 2 : p.frequency === "weekly" ? 7 : 1;
-                  const dayIndex = day.diff(p.startDate, "day");
+                  const dayIndex = day.startOf('day').diff(p.startDate.startOf('day'), "day");
                   if (dayIndex < 0) return [];
-                  if (p.endDate && day.isAfter(p.endDate, "day")) return [];
+                  if (p.endDate && day.startOf('day').isAfter(p.endDate.startOf('day'), "day")) return [];
                   if (dayIndex % step !== 0) return [];
                   return [true];
                 }).length === 0 && <Typography variant="body2" sx={{ fontStyle: 'italic', mt: 1 }}>No events for this day.</Typography>}

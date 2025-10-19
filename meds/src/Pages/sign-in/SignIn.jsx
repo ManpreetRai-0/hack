@@ -181,7 +181,14 @@ export default function SignIn(props) {
       <SignInContainer direction="column" justifyContent="space-between">
         <ColorModeSelect sx={{ position: 'fixed', top: '1rem', right: '1rem' }} />
         <Card variant="outlined">
-          <SitemarkIcon />
+        <Typography
+          component="h1"
+          variant="h5" // smaller than h4
+          sx={{ width: '100%', fontWeight: 'bold', textAlign: 'left' }}
+        >
+          <Box component="span" sx={{ color: 'red', fontSize: '1.5rem' }}>Rx</Box>
+          <Box component="span" sx={{ color: 'black', fontSize: '1.5rem', ml: 0.5 }}>Minder</Box>
+        </Typography>
           <Typography
             component="h1"
             variant="h4"
