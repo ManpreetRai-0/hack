@@ -78,9 +78,15 @@ export default function Dashboard() {
     const snapshot = await getDocs(prescriptionsRef);
 
     let allEvents = {};
+
     snapshot.forEach((doc) => {
       const data = doc.data();
-      if (data.eventsByDate) allEvents = { ...allEvents, ...data.eventsByDate };
+      if (data.eventsByDate) {
+        for (const [date, events] of Object.entries(data.eventsByDate)) {
+          if (!allEvents[date]) allEvents[date] = [];
+          allEvents[date] = [...allEvents[date], ...events];
+        }
+      }
     });
 
     setEvents(allEvents);
@@ -94,9 +100,15 @@ export default function Dashboard() {
     const snapshot = await getDocs(prescriptionsRef);
 
     let allEvents = {};
+
     snapshot.forEach((doc) => {
       const data = doc.data();
-      if (data.eventsByDate) allEvents = { ...allEvents, ...data.eventsByDate };
+      if (data.eventsByDate) {
+        for (const [date, events] of Object.entries(data.eventsByDate)) {
+          if (!allEvents[date]) allEvents[date] = [];
+          allEvents[date] = [...allEvents[date], ...events];
+        }
+      }
     });
 
     setEvents(allEvents);
