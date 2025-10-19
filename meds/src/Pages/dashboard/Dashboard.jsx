@@ -93,19 +93,18 @@ export default function Dashboard() {
 
       setPrescriptions(loaded);
 
-      if (!selectedLinkedUser) {
-        const takenRef = collection(db, "users", sanitizedEmail, "taken", todayKey, "events");
-        const takenSnapshot = await getDocs(takenRef);
-        const takenObj = {};
-        takenSnapshot.forEach(ts => takenObj[`${todayKey}-${ts.id}`] = true);
-        setTakenEvents(takenObj);
-      } else {
-        setTakenEvents({});
-      }
+      // Always fetch taken events for the selected user
+      const takenRef = collection(db, "users", sanitizedEmail, "taken", todayKey, "events");
+      const takenSnapshot = await getDocs(takenRef);
+      const takenObj = {};
+      takenSnapshot.forEach(ts => takenObj[`${todayKey}-${ts.id}`] = true);
+      setTakenEvents(takenObj);
+
     } catch (err) {
       console.error("Error fetching prescriptions:", err);
     }
   };
+
 
   const savePrescriptionToFirebase = async (prescriptionData) => {
     try {
