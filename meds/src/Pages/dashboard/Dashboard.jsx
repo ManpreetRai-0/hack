@@ -2,7 +2,7 @@ import * as React from 'react';
 import {
   Box, Button, Typography, TextField, Paper,
   MenuItem, Select, InputLabel, FormControl,
-  Dialog, DialogTitle, DialogContent, DialogActions, Divider
+  Dialog, DialogTitle, DialogContent, DialogActions, Divider, CssBaseline
 } from '@mui/material';
 import dayjs from 'dayjs';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
@@ -13,8 +13,10 @@ import {
   getDocs, doc, updateDoc, setDoc, arrayUnion, getDoc, deleteDoc
 } from 'firebase/firestore';
 import { useNavigate } from "react-router-dom";
+import AppTheme from '../shared-theme/AppTheme';
+import ColorModeSelect from '../shared-theme/ColorModeSelect';
 
-export default function Dashboard() {
+export default function Dashboard(props) {
   const [selectedDate] = React.useState(dayjs());
   const [prescriptions, setPrescriptions] = React.useState([]);
   const [takenEvents, setTakenEvents] = React.useState({});
@@ -104,7 +106,6 @@ export default function Dashboard() {
       console.error("Error fetching prescriptions:", err);
     }
   };
-
 
   const savePrescriptionToFirebase = async (prescriptionData) => {
     try {
@@ -234,177 +235,202 @@ export default function Dashboard() {
 
   // ------------------ Return JSX ------------------
   return (
-    <LocalizationProvider dateAdapter={AdapterDayjs}>
-      <Box sx={{ maxWidth: 900, mx: "auto", p: 4 }}>
-        {/* Header */}
-        <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', mb: 4 }}>
-          <Button
-            variant="outlined"
-            color="error"
-            onClick={async () => { await auth.signOut(); navigate('/') }}
-            sx={{ borderRadius: 2 }}
-          >
-            Logout
-          </Button>
-        </Box>
+    <AppTheme {...props}>
+      <CssBaseline enableColorScheme />
+      <LocalizationProvider dateAdapter={AdapterDayjs}>
+        <ColorModeSelect sx={{ position: 'fixed', top: '1rem', right: '1rem' }} />
 
-        {/* Dashboard Header */}
-        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
-          <Typography variant="h4" fontWeight="bold">
-            {selectedLinkedUser ? `${selectedLinkedUser}'s Dashboard` : "My Prescription Dashboard"}
-          </Typography>
-          <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
-            <Button variant="contained" color="secondary" onClick={() => setInviteOpen(true)}>Invite User</Button>
-            <FormControl sx={{ minWidth: 250 }}>
-              <InputLabel>View Linked User</InputLabel>
-              <Select
-                value={selectedLinkedUser || ""}
-                onChange={(e) => setSelectedLinkedUser(e.target.value)}
-              >
-                <MenuItem value="">My Dashboard</MenuItem>
-                {linkedUsers.map(email => (<MenuItem key={email} value={email}>{email}</MenuItem>))}
-              </Select>
-            </FormControl>
-          </Box>
-        </Box>
-
-        {/* Pending Invites */}
-        {pendingInvites.length > 0 && (
-          <Paper sx={{ p: 3, mb: 4 }} elevation={3}>
-            <Typography variant="h6" gutterBottom>Pending Invites</Typography>
-            {pendingInvites.map(invite => (
-              <Box key={invite.id} sx={{ display: "flex", alignItems: "center", mb: 2 }}>
-                <Typography sx={{ flex: 1 }}>{invite.from} invited you</Typography>
-                <Button variant="contained" size="small" color="primary" sx={{ mr: 1 }}
-                  onClick={() => acceptInvite(invite.id, invite.from)}>Accept</Button>
-                <Button variant="outlined" size="small" color="error"
-                  onClick={() => declineInvite(invite.id)}>Decline</Button>
-              </Box>
-            ))}
-          </Paper>
-        )}
-
-        {/* Invite Dialog */}
-        <Dialog open={inviteOpen} onClose={() => setInviteOpen(false)}>
-          <DialogTitle>Invite Linked User</DialogTitle>
-          <DialogContent>
-            <TextField fullWidth label="User Email" value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} sx={{ mt: 2 }} />
-          </DialogContent>
-          <DialogActions>
-            <Button onClick={() => setInviteOpen(false)}>Cancel</Button>
-            <Button onClick={sendInvite} variant="contained">Send Invite</Button>
-          </DialogActions>
-        </Dialog>
-
-        {/* Prescription Form */}
-        {!selectedLinkedUser && (
-          <Paper sx={{ p: 3, mb: 4 }} elevation={3}>
-            <Typography variant="h6" gutterBottom>Add a New Prescription</Typography>
-            <Divider sx={{ mb: 2 }} />
-            <TextField fullWidth label="Prescription Name" value={prescription.name}
-              onChange={e => setPrescription({ ...prescription, name: e.target.value })} sx={{ mb: 2 }} />
-            <TextField fullWidth label="Dosage" value={prescription.dosage}
-              onChange={e => setPrescription({ ...prescription, dosage: e.target.value })} sx={{ mb: 2 }} />
-            <FormControl fullWidth sx={{ mb: 2 }}>
-              <InputLabel>Frequency</InputLabel>
-              <Select value={prescription.frequency} onChange={e => setPrescription({ ...prescription, frequency: e.target.value })}>
-                <MenuItem value="daily">Daily</MenuItem>
-                <MenuItem value="every-2-days">Every 2 Days</MenuItem>
-                <MenuItem value="weekly">Weekly</MenuItem>
-              </Select>
-            </FormControl>
-
-            <Typography variant="subtitle1" gutterBottom>Times Per Day</Typography>
-            {prescription.timesPerDay.map((time, idx) => (
-              <Box key={idx} sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                <TextField type="time" value={time} onChange={e => {
-                  const times = [...prescription.timesPerDay]; times[idx] = e.target.value;
-                  setPrescription({ ...prescription, timesPerDay: times });
-                }} sx={{ mr: 2 }} />
-                <Button variant="outlined" color="error" onClick={() => {
-                  const filtered = prescription.timesPerDay.filter((_, i) => i !== idx);
-                  setPrescription({ ...prescription, timesPerDay: filtered });
-                }} disabled={prescription.timesPerDay.length === 1}>Remove</Button>
-              </Box>
-            ))}
-            <Button variant="outlined" onClick={() => setPrescription({ ...prescription, timesPerDay: [...prescription.timesPerDay, '08:00'] })} sx={{ mb: 2 }}>
-              Add Time
+        <Box sx={{ maxWidth: 900, mx: "auto", p: 4 }}>
+          {/* Header */}
+          <Box sx={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', mb: 4 }}>
+            <Button
+              variant="outlined"
+              color="error"
+              onClick={async () => { await auth.signOut(); navigate('/') }}
+              sx={{ borderRadius: 2 }}
+            >
+              Logout
             </Button>
+          </Box>
 
-            <TextField fullWidth label="Start Date" type="date"
-              value={prescription.startDate.format('YYYY-MM-DD')}
-              onChange={e => setPrescription({ ...prescription, startDate: dayjs(e.target.value) })}
-              sx={{ mb: 2 }} InputLabelProps={{ shrink: true }} />
+          {/* Dashboard Header */}
+          <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 4 }}>
+            <Typography variant="h4" fontWeight="bold">
+              {selectedLinkedUser ? `${selectedLinkedUser}'s Dashboard` : "My Prescription Dashboard"}
+            </Typography>
+            <Box sx={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+              <Button variant="contained" color="secondary" onClick={() => setInviteOpen(true)}>Invite User</Button>
+              <FormControl sx={{ minWidth: 250 }}>
+                <InputLabel>View Linked User</InputLabel>
+                <Select
+                  value={selectedLinkedUser || ""}
+                  onChange={(e) => setSelectedLinkedUser(e.target.value)}
+                >
+                  <MenuItem value="">My Dashboard</MenuItem>
+                  {linkedUsers.map(email => (<MenuItem key={email} value={email}>{email}</MenuItem>))}
+                </Select>
+              </FormControl>
+            </Box>
+          </Box>
 
-            <TextField fullWidth label="End Date (Optional)" type="date"
-              value={prescription.endDate ? prescription.endDate.format('YYYY-MM-DD') : ''}
-              onChange={e => setPrescription({ ...prescription, endDate: e.target.value ? dayjs(e.target.value) : null })}
-              sx={{ mb: 2 }} InputLabelProps={{ shrink: true }} />
-
-            <Button variant="contained" onClick={handleAddPrescription} sx={{ width: '100%' }}>Add Prescription Reminder</Button>
-          </Paper>
-        )}
-
-        {/* Weekly Schedule */}
-        <Typography variant="h5" sx={{ mb: 2 }}>Weekly Schedule</Typography>
-        {daysOfWeek.map((day, idx) => {
-          const dateKey = day.format('YYYY-MM-DD');
-          return (
-            <Paper key={idx} sx={{ mb: 3, p: 3 }} elevation={2}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
-                <Typography variant="h6">{day.format('dddd')}</Typography>
-                <Typography color="text.secondary">{day.format('MMM D')}</Typography>
-              </Box>
-              <Divider sx={{ my: 1 }} />
-              <Box sx={{ mt: 1 }}>
-                {prescriptions.flatMap(p => {
-                  const step = p.frequency === "every-2-days" ? 2 : p.frequency === "weekly" ? 7 : 1;
-                  const dayIndex = day.startOf('day').diff(p.startDate.startOf('day'), "day");
-
-                  if (dayIndex < 0) return []; // skip days before start
-                  if (p.endDate && day.startOf('day').isAfter(p.endDate.startOf('day'), "day")) return [];
-                  if (dayIndex % step !== 0) return [];
-
-                  return p.timesPerDay.map(time => {
-                    const eventKey = `${dateKey}-${p.id}-${time}`;
-                    const isTaken = !!takenEvents[eventKey];
-                    const isToday = dateKey === todayKey;
-
-                    return (
-                      <Box key={eventKey} sx={{
-                        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                        p: 2, my: 1, borderRadius: 2, boxShadow: 1,
-                        backgroundColor: isTaken ? "#c8e6c9" : "#f9f9f9",
-                        transition: "background-color 0.25s ease"
-                      }}>
-                        <Typography variant="body1">{p.name} - {p.dosage} at {time} {isTaken && "✔️"}</Typography>
-                        {isToday && !selectedLinkedUser && (
-                          <Button
-                            variant="contained"
-                            size="small"
-                            onClick={() => toggleTaken(p.id, time, dateKey, `${p.name} - ${p.dosage} at ${time}`)}
-                            sx={{ ml: 2, borderRadius: 2 }}
-                          >
-                            {isTaken ? "Undo" : "Take"}
-                          </Button>
-                        )}
-                      </Box>
-                    );
-                  });
-                })}
-                {prescriptions.flatMap(p => {
-                  const step = p.frequency === "every-2-days" ? 2 : p.frequency === "weekly" ? 7 : 1;
-                  const dayIndex = day.startOf('day').diff(p.startDate.startOf('day'), "day");
-                  if (dayIndex < 0) return [];
-                  if (p.endDate && day.startOf('day').isAfter(p.endDate.startOf('day'), "day")) return [];
-                  if (dayIndex % step !== 0) return [];
-                  return [true];
-                }).length === 0 && <Typography variant="body2" sx={{ fontStyle: 'italic', mt: 1 }}>No events for this day.</Typography>}
-              </Box>
+          {/* Pending Invites */}
+          {pendingInvites.length > 0 && (
+            <Paper sx={{ p: 3, mb: 4 }} elevation={3}>
+              <Typography variant="h6" gutterBottom>Pending Invites</Typography>
+              {pendingInvites.map(invite => (
+                <Box key={invite.id} sx={{ display: "flex", alignItems: "center", mb: 2 }}>
+                  <Typography sx={{ flex: 1 }}>{invite.from} invited you</Typography>
+                  <Button variant="contained" size="small" color="primary" sx={{ mr: 1 }}
+                    onClick={() => acceptInvite(invite.id, invite.from)}>Accept</Button>
+                  <Button variant="outlined" size="small" color="error"
+                    onClick={() => declineInvite(invite.id)}>Decline</Button>
+                </Box>
+              ))}
             </Paper>
-          );
-        })}
-      </Box>
-    </LocalizationProvider>
+          )}
+
+          {/* Invite Dialog */}
+          <Dialog open={inviteOpen} onClose={() => setInviteOpen(false)}>
+            <DialogTitle>Invite Linked User</DialogTitle>
+            <DialogContent>
+              <TextField fullWidth label="User Email" value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} sx={{ mt: 2 }} />
+            </DialogContent>
+            <DialogActions>
+              <Button onClick={() => setInviteOpen(false)}>Cancel</Button>
+              <Button onClick={sendInvite} variant="contained">Send Invite</Button>
+            </DialogActions>
+          </Dialog>
+
+          {/* Prescription Form */}
+          {!selectedLinkedUser && (
+            <Paper sx={{ p: 3, mb: 4 }} elevation={3}>
+              <Typography variant="h6" gutterBottom>Add a New Prescription</Typography>
+              <Divider sx={{ mb: 2 }} />
+              <TextField fullWidth label="Prescription Name" value={prescription.name}
+                onChange={e => setPrescription({ ...prescription, name: e.target.value })} sx={{ mb: 2 }} />
+              <TextField fullWidth label="Dosage" value={prescription.dosage}
+                onChange={e => setPrescription({ ...prescription, dosage: e.target.value })} sx={{ mb: 2 }} />
+              <FormControl fullWidth sx={{ mb: 2 }}>
+                <InputLabel>Frequency</InputLabel>
+                <Select value={prescription.frequency} onChange={e => setPrescription({ ...prescription, frequency: e.target.value })}>
+                  <MenuItem value="daily">Daily</MenuItem>
+                  <MenuItem value="every-2-days">Every 2 Days</MenuItem>
+                  <MenuItem value="weekly">Weekly</MenuItem>
+                </Select>
+              </FormControl>
+
+              <Typography variant="subtitle1" gutterBottom>Times Per Day</Typography>
+              {prescription.timesPerDay.map((time, idx) => (
+                <Box key={idx} sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                  <TextField type="time" value={time} onChange={e => {
+                    const times = [...prescription.timesPerDay]; times[idx] = e.target.value;
+                    setPrescription({ ...prescription, timesPerDay: times });
+                  }} sx={{ mr: 2 }} />
+                  <Button variant="outlined" color="error" onClick={() => {
+                    const filtered = prescription.timesPerDay.filter((_, i) => i !== idx);
+                    setPrescription({ ...prescription, timesPerDay: filtered });
+                  }} disabled={prescription.timesPerDay.length === 1}>Remove</Button>
+                </Box>
+              ))}
+              <Button variant="outlined" onClick={() => setPrescription({ ...prescription, timesPerDay: [...prescription.timesPerDay, '08:00'] })} sx={{ mb: 2 }}>
+                Add Time
+              </Button>
+
+              <TextField fullWidth label="Start Date" type="date"
+                value={prescription.startDate.format('YYYY-MM-DD')}
+                onChange={e => setPrescription({ ...prescription, startDate: dayjs(e.target.value) })}
+                sx={{ mb: 2 }} InputLabelProps={{ shrink: true }} />
+
+              <TextField fullWidth label="End Date (Optional)" type="date"
+                value={prescription.endDate ? prescription.endDate.format('YYYY-MM-DD') : ''}
+                onChange={e => setPrescription({ ...prescription, endDate: e.target.value ? dayjs(e.target.value) : null })}
+                sx={{ mb: 2 }} InputLabelProps={{ shrink: true }} />
+
+              <Button variant="contained" onClick={handleAddPrescription} sx={{ width: '100%' }}>Add Prescription Reminder</Button>
+            </Paper>
+          )}
+
+          {/* Weekly Schedule */}
+          <Typography variant="h5" sx={{ mb: 2 }}>Weekly Schedule</Typography>
+          {daysOfWeek.map((day, idx) => {
+            const dateKey = day.format('YYYY-MM-DD');
+            return (
+              <Paper key={idx} sx={{ mb: 3, p: 3 }} elevation={2}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <Typography variant="h6">{day.format('dddd')}</Typography>
+                  <Typography color="text.secondary">{day.format('MMM D')}</Typography>
+                </Box>
+                <Divider sx={{ my: 1 }} />
+                <Box sx={{ mt: 1 }}>
+                  {prescriptions.flatMap(p => {
+                    const step = p.frequency === "every-2-days" ? 2 : p.frequency === "weekly" ? 7 : 1;
+                    const dayIndex = day.startOf('day').diff(p.startDate.startOf('day'), "day");
+
+                    if (dayIndex < 0) return [];
+                    if (p.endDate && day.startOf('day').isAfter(p.endDate.startOf('day'), "day")) return [];
+                    if (dayIndex % step !== 0) return [];
+
+                    return p.timesPerDay.map(time => {
+                      const eventKey = `${dateKey}-${p.id}-${time}`;
+                      const isTaken = !!takenEvents[eventKey];
+                      const isToday = dateKey === todayKey;
+
+                      return (
+                        <Box
+                          key={eventKey}
+                          sx={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            p: 2,
+                            my: 1,
+                            borderRadius: 2,
+                            boxShadow: 1,
+                            backgroundColor: (theme) =>
+                              isTaken
+                                ? theme.palette.success.light
+                                : theme.palette.background.paper,
+                            color: (theme) => theme.palette.text.primary,
+                            transition: 'background-color 0.25s ease',
+                          }}
+                        >
+                          <Typography variant="body1">
+                            {p.name} - {p.dosage} at {time} {isTaken && '✔️'}
+                          </Typography>
+                          {isToday && !selectedLinkedUser && (
+                            <Button
+                              variant="contained"
+                              size="small"
+                              onClick={() =>
+                                toggleTaken(p.id, time, dateKey, `${p.name} - ${p.dosage} at ${time}`)
+                              }
+                              sx={{ ml: 2, borderRadius: 2 }}
+                            >
+                              {isTaken ? 'Undo' : 'Take'}
+                            </Button>
+                          )}
+                        </Box>
+                      );
+                    });
+                  })}
+                  {prescriptions.flatMap(p => {
+                    const step = p.frequency === "every-2-days" ? 2 : p.frequency === "weekly" ? 7 : 1;
+                    const dayIndex = day.startOf('day').diff(p.startDate.startOf('day'), "day");
+                    if (dayIndex < 0) return [];
+                    if (p.endDate && day.startOf('day').isAfter(p.endDate.startOf('day'), "day")) return [];
+                    if (dayIndex % step !== 0) return [];
+                    return [true];
+                  }).length === 0 && (
+                    <Typography variant="body2" sx={{ fontStyle: 'italic', mt: 1 }}>
+                      No events for this day.
+                    </Typography>
+                  )}
+                </Box>
+              </Paper>
+            );
+          })}
+        </Box>
+      </LocalizationProvider>
+    </AppTheme>
   );
 }
