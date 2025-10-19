@@ -12,6 +12,7 @@ import {
   collection, addDoc, query, where,
   getDocs, doc, updateDoc, setDoc, getDoc, arrayUnion
 } from 'firebase/firestore';
+import { useNavigate } from "react-router-dom";  //For going from sign up to dasboard
 
 export default function Dashboard() {
   const [selectedDate] = React.useState(dayjs());
@@ -22,6 +23,8 @@ export default function Dashboard() {
   const [pendingInvites, setPendingInvites] = React.useState([]);
   const [linkedUsers, setLinkedUsers] = React.useState([]);
   const [selectedLinkedUser, setSelectedLinkedUser] = React.useState("");
+
+  const navigate = useNavigate()
 
   const [prescription, setPrescription] = React.useState({
     name: '',
@@ -218,7 +221,7 @@ export default function Dashboard() {
               color="error"
               onClick={async () => {
                 await auth.signOut();
-                window.location.reload(); // refresh to reset dashboard
+                navigate('/')
               }}
               sx={{ borderRadius: 2 }}
             >
